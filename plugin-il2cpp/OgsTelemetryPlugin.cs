@@ -55,6 +55,7 @@ public class OgsTelemetryPlugin : BasePlugin
     internal ConfigEntry<double> _motionHz = null!;
     internal ConfigEntry<string> _objectName = null!;
     internal ConfigEntry<string> _typeLabel = null!;
+    internal ConfigEntry<string> _instanceLabel = null!;
     internal ConfigEntry<string> _pawnTag = null!;
     internal ConfigEntry<bool> _useCameraRoot = null!;
     internal ConfigEntry<bool> _dynamics = null!;
@@ -74,6 +75,9 @@ public class OgsTelemetryPlugin : BasePlugin
                                 "Motion frame rate cap");
         _objectName = Config.Bind("Telemetry", "ObjectName", "player",
                                   "Object name in discovery");
+        _instanceLabel = Config.Bind("Telemetry", "InstanceLabel", "",
+                                     "Names this instance in receivers' session pickers " +
+                                     "when more than one can run on a network (e.g. Rig 2)");
         _typeLabel = Config.Bind("Telemetry", "ObjectTypeLabel", "",
                                  "Object typeLabel in discovery (display " +
                                  "flavor). Empty = auto: the tracked pawn's " +
@@ -152,6 +156,7 @@ public class OgsBehaviour : MonoBehaviour
         _publisher = new TelemetryPublisher(_sender, OgsTelemetryPlugin.GameName(),
                                             p._motionHz.Value);
         _publisher.DeclareObject(p._objectName.Value);
+        _publisher.SetInstance(p._instanceLabel.Value);
         _publisher.DeclarePause();
         if (!string.IsNullOrEmpty(p._typeLabel.Value))
             _publisher.SetObjectTypeLabel(p._typeLabel.Value); // config wins
