@@ -52,6 +52,9 @@ for (int i = 0; i < 150; i++)
 }
 if (frames != 150 || !labelSwapped) { Console.WriteLine("FAIL frame count"); return 1; }
 Console.WriteLine("smoke: 150 ticks published (discovery + motion sent, typeLabel swapped at tick 75)");
+// the label is object identity: a swap after discovery starts a new generation
+if (pub.Generation != 1) { Console.WriteLine($"FAIL generation {pub.Generation} after the label swap, expected 1"); return 1; }
+Console.WriteLine("PASS typeLabel swap after discovery starts generation 1");
 
 // ---- derived body dynamics assertions (plugin wiring, delta velocity) ----
 {
