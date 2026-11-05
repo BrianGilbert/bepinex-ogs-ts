@@ -96,6 +96,8 @@ void CorpusCheck(string name, bool ok)
     Console.WriteLine($"{(ok ? "PASS" : "FAIL")} corpus: {name}");
     if (!ok) corpusFail++;
 }
+if (!HeadingChecks.Run()) return 1;
+if (!DiscoveryChecks.Run()) return 1;
 string? corpusDir = null;
 for (var d = new DirectoryInfo(AppContext.BaseDirectory);
      d != null && corpusDir == null; d = d.Parent!)

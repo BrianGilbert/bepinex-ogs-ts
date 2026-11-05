@@ -24,6 +24,8 @@ namespace UnityEngine
     public class Object
     {
         public string name { get { return ""; } } // ancient stable API; binds at runtime
+        public static Object[] FindObjectsOfType(Type type) { return new Object[0]; }
+        public int GetInstanceID() { return 0; }
         public static implicit operator bool(Object o) => o != null;
         public static bool operator ==(Object a, Object b) => ReferenceEquals(a, b);
         public static bool operator !=(Object a, Object b) => !ReferenceEquals(a, b);
@@ -34,6 +36,8 @@ namespace UnityEngine
     public class Component : Object
     {
         public Transform transform { get { return new Transform(); } }
+        public string tag { get { return ""; } }
+        public Component[] GetComponents(Type type) { return new Component[0]; }
     }
 
     public class Transform : Component
@@ -42,20 +46,24 @@ namespace UnityEngine
         public Vector3 position { get { return default; } }
         public Quaternion rotation { get { return default; } }
         public Transform root { get { return new Transform(); } }
+        public Transform parent { get { return null; } }
     }
 
     public class GameObject : Object
     {
         public static GameObject FindWithTag(string tag) { return new GameObject(); }
+        public static GameObject[] FindGameObjectsWithTag(string tag) { return new GameObject[0]; }
         public Transform transform { get { return new Transform(); } }
     }
 
-    public class Behaviour : Component { }
+    public class Behaviour : Component { public bool enabled { get { return true; } } }
     public class MonoBehaviour : Behaviour { }
 
     public sealed class Camera : Behaviour
     {
         public static Camera main { get { return new Camera(); } }
+        public static Camera[] allCameras { get { return new Camera[0]; } }
+        public float depth { get { return 0f; } }
     }
 
     public static class Debug

@@ -13,6 +13,8 @@
 
   <ItemGroup>
     <Compile Include="../OgsTelemetry/*.cs" Link="OgsTelemetry/%(Filename)%(Extension)" />
+    <Compile Include="../Heading/*.cs" Link="Heading/%(Filename)%(Extension)" />
+    <Compile Include="../Shared/*.cs" Link="Shared/%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>
