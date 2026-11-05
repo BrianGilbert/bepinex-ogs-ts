@@ -3,6 +3,9 @@
 - Motion object is the player PAWN (tag Player / camera-root proxy),
   not the camera — KB ruling C-20261010-MBP-08. Unity frame maps to
   OGS-TS natively (no conversion); the vendored C# core IS the wire.
+  `Pawn.RotationSource` (Pawn | CameraYaw | Camera | Auto) is the opt-in
+  for games whose body does not turn with the view; the logic lives in
+  Heading/HeadingSelector.cs, compiled into both flavors and into Smoke.
 - OgsTelemetry/ is vendored source from ../ogs-ts-dotnet (sync-core.ps1,
   receiver excluded). The core carries a netstandard2.0 TFM specifically
   for this plugin (BepInEx 5 Mono runs .NET Framework).

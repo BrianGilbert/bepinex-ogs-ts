@@ -42,6 +42,100 @@ world frame matches OGS-TS natively — values pass through unmapped.
 The camera itself is engine-smoothed and a rig following it would feed
 platform motion back into telemetry.
 
+Some games do not turn the body with the view: on foot in Subnautica the
+player root stays put while only the camera rig turns, so the pawn's
+heading never changes. `Pawn.RotationSource` chooses where the published
+rotation comes from:
+
+| Value | Rotation |
+|---|---|
+| `Pawn` (default) | the pawn's own rotation |
+| `CameraYaw` | the camera's heading plus the pawn's own tilt, so looking around steers the heading without pitching or rolling the rig |
+| `Camera` | the camera's full rotation |
+| `Auto` | `Pawn` while the body follows the view (swimming, vehicles, first-person pawns), `CameraYaw` while the body stays put as the camera turns (on foot); decided from observed motion, with a short blend so the heading never steps |
+
+### Games the generic lookup misses
+
+Some games have no `Player` tag and no `MainCamera`-tagged camera, so the
+default lookup finds nothing and the stream stays at a constant zero pose
+(the Monitor shows "pose only"). `Pawn.ComponentType` tracks the object
+carrying a named game component instead:
+
+```ini
+[Pawn] ComponentType = CarPhysics, ChassisWithWheels   ; names from the game's code
+       Pick = NearestCamera                            ; or First
+       Survey = false                                  ; true = log what surrounds the camera
+       AutoDiscover = false                            ; true = find the body from what the camera follows
+       LearnedComponentType =                          ; written by AutoDiscover once a pick proves it moves
+```
+
+- The value is a comma-separated list in priority order; the first type
+  with a live instance wins, and if several instances exist the one nearest
+  the camera is picked (the camera follows the local player). Names match
+  a type's simple name (`Car`) or full name (`car.Car`).
+- If a lower-priority type was picked (say a menu garage car) and a
+  higher-priority one appears later, the plugin switches to it.
+- When the camera has no `MainCamera` tag the plugin uses the enabled
+  camera with the highest depth.
+- When the list is set there is no silent fallback to the camera root.
+- `Survey = true` logs the cameras and the 15 objects nearest the camera,
+  with their components, once per pawn binding and every 60 s while no
+  pawn is found. Read the component names off the log to choose
+  `ComponentType`. The log also warns when the picked object has not moved
+  after 10 s.
+
+**Automatic discovery (experimental).** `Pawn.AutoDiscover = true` finds the
+body with no game knowledge, from what the camera does. When the tag lookup
+finds nothing, the plugin observes the objects around the camera for a few
+seconds of gameplay and tracks the one that moves with the camera at a
+steady distance. Static scenery, a frozen logical player object, and
+independent movers (a ball, other cars) don't fit that pattern; a wheel or
+mesh that rides on the body scores the same as the body, so the one nearest
+the hierarchy root wins. The camera has to travel before it decides, it
+falls back to the camera root after 45 s, and a pick that doesn't move while
+the camera does is rejected and the search starts again.
+
+Once discovery picks a body, its most specific game component type (engine
+types are skipped; of the rest, the one with the fewest live instances) is
+remembered for the session, so the next scene or vehicle binds at once
+instead of observing again. When that pick has proven it moves, the type is
+saved to `Pawn.LearnedComponentType` and tried first on later launches. It
+is a type, not an object name or position, so it carries across levels and
+vehicles that share the component. It never overwrites `ComponentType`, a
+saved type that stops moving with the camera is forgotten automatically,
+and clearing the entry resets it. A miss (the type isn't in this scene)
+just falls through to discovery. The log names the
+pick, its components and a suggested `ComponentType` to pin it. It can be
+wrong in games with a detached camera (strategy, fixed cameras), split
+screen, or another vehicle travelling in formation with the player.
+
+**Built-in presets.** Games verified in-game get defaults seeded from their
+process name (Turbo Golf Racing: `ComponentType = CarPhysics,
+ChassisWithWheels`; Subnautica Below Zero: `RotationSource = Auto`). A
+preset only seeds the default written into `ogs.telemetry.cfg` on first
+run; once the file exists its values win, so edit freely, and delete the
+file to re-seed.
+
+`Auto` is tuned in the `[Heading]` section of the same per-game config file
+(defaults suit on-foot Subnautica; all take effect when the pawn is
+re-resolved, i.e. on the next game load):
+
+| Key | Default | Meaning |
+|---|---|---|
+| `EnterCameraDeg` | 20 | camera turn needed, with a still body, to follow the camera. Raise it in games where head-look in vehicles trips the switch; lower it to switch sooner |
+| `StillBodyDeg` / `StillBodyRatio` | 6 / 0.2 | the body counts as still below this many degrees and this share of the camera's turn |
+| `ExitBodyDeg` / `ExitBodyRatio` | 12 / 0.5 | body turn (degrees, and share of the camera's) that hands the heading back to the pawn |
+| `DecaySeconds` | 1.5 | memory of the turn measurement |
+| `MinDwellSeconds` | 1.0 | minimum time between switches |
+| `BlendSeconds` | 0.5 | how long the heading eases across a switch |
+
+If head-look keeps switching in a game, raise `EnterCameraDeg`, or set
+`RotationSource = Pawn` (or `CameraYaw` to stay on the camera heading).
+
+The log line `[ogs] heading source: camera|pawn (Auto)` marks each switch.
+Body dynamics are derived from the published rotation, so a camera source
+makes head-turns register as angular velocity.
+
 Body dynamics ride the `bodyDynamics` union variant in every motion
 frame: **specific force** (m/s², accelerometer-style: `f = a − g`,
 +1 g on the up axis at rest — what an IMU reads) and **angular
@@ -73,7 +167,8 @@ physics module keep standard gravity. Disable with the
 |---|---|---|
 | Any IL2CPP game (Unity 2019+ typical) | ✅ | `il2cpp/` flavor on [BepInEx 6](https://builds.bepinex.dev/projects/bepinex_be) (be.788+); plugin code runs on BepInEx's .NET 6 sidecar, not inside IL2CPP |
 | 2018.3 – 2021.1 (Mono) | ✅ | .NET 4.x runtime is the default (Mono ≈ 4.7.1) |
-| 2021.2 – 2023.x / Unity 6 (Mono builds) | ✅ | Mono 6 / .NET 4.8-era runtime |
+| 2021.2 – 2023.x (Mono builds) | ✅ | Mono 6 / .NET 4.8-era runtime |
+| Unity 6 (Mono builds) | ⚠️ | one game tried (6000.3.1) does not load: its standard library is stripped, see [Known limitations](#known-limitations) |
 | 2017.2 – 2018.2 (Mono) | ⚠️ | works if the developer selected the then-experimental ".NET 4.x" scripting profile |
 | ≤ 2017.1, or any game on the legacy .NET 3.5 profile | ❌ | the vendored core (System.Memory) can't target net35 — older BepInEx catalog |
 
@@ -100,6 +195,57 @@ If the game is Mono and 2018.3+ and the plugin still doesn't load, check the Bep
   `4.0.30319.x` = .NET 4.x (compatible). `0 plugins to load` next to a
   `Chainloader` line means BepInEx rejected the plugin — look up for
   the reason.
+
+## Known limitations
+
+**Unity 6 Mono builds with a stripped class library.** Unity 6 strips
+unused code out of the Mono class library (`mscorlib.dll`, `System.dll`,
+`System.Core.dll`, ...) at build time. Observed on Vecter (Unity 6000.3.1,
+Mono): the game's `mscorlib.dll` is about 2.6 MB with 2,035 types, against
+about 4.5 MB and 2,993 types unstripped. Two layers fail:
+
+- **BepInEx 5.4.23.6 does not start.** No `BepInEx\LogOutput.log` is
+  written; the game folder gets a `preloader_*.log` with
+  `MissingMethodException: ... System.Reflection.Module.GetPEKind(...)`
+  (BepInEx's and MonoMod's ARM platform check) and, once that call is
+  patched out, `... System.IO.File.ReadAllLines(string)`. The same
+  `GetPEKind` call is in BepInEx 6's `PlatformUtils.cs`.
+- **The plugin itself needs APIs the stripped libraries lack.** A
+  comparison of the plugin's BCL references against the game's assemblies
+  found about 32 missing members in 12 types plus 8 missing types,
+  including `System.Numerics.Vector3` / `Quaternion` constructors and
+  operators, `Socket.SendTo`, `DateTimeOffset.UtcNow`, and the
+  `NetworkInterface` multicast and gateway members used to choose the
+  multicast interface. Name and parameter-count matching only, so
+  approximate.
+
+**Don't swap in unstripped libraries.** The corlibs on
+`unity.bepinex.dev/corlibs/<version>.zip` come from a different runtime
+build than the game's player. Replacing the game's `mscorlib.dll` and
+friends with them made the game fail during load with
+`DllNotFoundException: System.Native`. Restore the originals (or Steam's
+*Verify integrity of game files*).
+
+**Quick check** for a Unity 6 Mono game before installing: a
+`Managed\mscorlib.dll` far smaller than a normal Mono one (about 2.6 MB
+here) and a `preloader_*.log` with a `MissingMethodException` in the game
+folder after the first launch.
+
+**What would fix it:** the developer building with *Managed Stripping
+Level: Disabled* (fixes both layers); or a standalone Doorstop loader plus
+a plugin build that avoids the missing APIs (own vector and quaternion
+types, different socket and network calls). Neither exists yet.
+
+**Other known limits** (details in their sections above):
+
+- `Pawn.AutoDiscover` can be wrong with a detached camera (strategy or
+  fixed cameras), split screen, or another vehicle travelling in
+  formation with the player, and needs the camera to move before it
+  decides.
+- `RotationSource = Auto` can take head-look in a vehicle for an on-foot
+  turn; raise `[Heading] EnterCameraDeg` (or fix the source) for that game.
+- Built-in presets only seed the default of a new config file; an
+  existing `ogs.telemetry.cfg` keeps its values.
 
 ## Install
 
@@ -133,6 +279,7 @@ If the game is Mono and 2018.3+ and the plugin still doesn't load, check the Bep
    [Telemetry] MotionHz = 60           ; ObjectName = player   ; PauseDetection = true
                GravityFromPhysics = true
    [Pawn] Tag = Player                 ; CameraRootFallback = true
+          RotationSource = Pawn        ; Pawn | CameraYaw | Camera | Auto
    ```
 4. Pair with a receiver — e.g. ogs-ts-dotnet's
    `dotnet run --project src/TelemetryReceive`.
@@ -187,4 +334,6 @@ flavor is the single plugin DLL under `il2cpp/`.
 | `plugin-il2cpp/` | BepInEx 6 IL2CPP glue (BasePlugin + injected tick component) |
 | `OgsTelemetry/` | vendored engine-agnostic core (source) |
 | `vendor/UnityEngineStub/` | compile-only UnityEngine stub (Mono flavor) |
+| `Heading/` | engine-agnostic rotation-source selector and component-type lookup (both flavors compile them) |
+| `Shared/` | per-game presets and camera-following pawn discovery (both flavors compile them) |
 | `Smoke/` | standalone wire-path verification |
