@@ -1,8 +1,11 @@
 # bepinex-ogs-ts — working conventions
 
-- Motion object is the player PAWN (tag Player / camera-root proxy),
-  not the camera — KB ruling C-20261010-MBP-08. Unity frame maps to
-  OGS-TS natively (no conversion); the vendored C# core IS the wire.
+- Motion object is the player PAWN, not the camera — KB ruling
+  C-20261010-MBP-08. Found by: ComponentType, the Player tag (nearest
+  the camera when several), a learned type, AutoDiscover (what the camera
+  follows; on by default, camera root meanwhile), then the camera-root
+  proxy. Unity frame maps to OGS-TS natively (no conversion); the
+  vendored C# core IS the wire.
   `Pawn.RotationSource` (Pawn | CameraYaw | Camera | Auto) is the opt-in
   for games whose body does not turn with the view; the logic lives in
   Heading/HeadingSelector.cs, compiled into both flavors and into Smoke.

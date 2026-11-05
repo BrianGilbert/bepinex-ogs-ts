@@ -2,9 +2,14 @@
 
 > [!IMPORTANT]
 > **In active development.** Validated in Subnautica Below Zero, Hyper
-> Storm and Exo One (Mono) and Sable (IL2CPP), but every Unity game sets
-> up its player differently, so expect the odd title where tracking
-> needs a config tweak. Please report what you find on
+> Storm and Exo One (Mono), and Sable, Turbo Golf Racing and Torque Drift
+> (IL2CPP). The plugin finds the player's body on its own in most games
+> ([automatic discovery](#when-the-tag-is-not-enough) is on by default)
+> and, where a game's on-foot body doesn't turn with the view, can take
+> the heading from the camera
+> ([`RotationSource`](#heading-from-the-camera)). Every Unity game sets
+> up its player differently, though, so expect the odd title where
+> tracking needs a config tweak. Please report what you find on
 > [Discord](https://discord.gg/yyCp5D2Ccp). If a game misbehaves and I
 > don't already own it, a key for it is the fastest way to get it fixed.
 >
@@ -18,7 +23,9 @@
 motion telemetry from **any Unity game BepInEx injects — Mono or
 IL2CPP** — zero game modification, LAN-only UDP multicast. Motion
 platforms, haptic hardware, and dashboards on the local network can
-follow the game. Motion frames carry pose **plus body dynamics**
+follow the game. The plugin finds the player's body automatically and,
+for games whose on-foot body doesn't turn with the view, can take the
+heading from the camera. Motion frames carry pose **plus body dynamics**
 (specific force + angular rates — the direct motion-cueing inputs,
 derived from the pawn pose). The release zip carries both flavors in `mono/` and
 `il2cpp/` subfolders; each is the same plugin built for its BepInEx
@@ -36,11 +43,34 @@ assertions, observed end-to-end on a real receiver).
 
 ## What it tracks — the pawn, not the camera
 
-The motion object is the **player pawn** (tag `Player` by default, or
-the main camera's root transform as a flatscreen pawn proxy). Unity's
-world frame matches OGS-TS natively — values pass through unmapped.
-The camera itself is engine-smoothed and a rig following it would feed
-platform motion back into telemetry.
+The motion object is the **player pawn**: the body the player controls.
+Unity's world frame matches OGS-TS natively — values pass through
+unmapped. The camera itself is engine-smoothed and a rig following it
+would feed platform motion back into telemetry, so by default the
+published pose is the pawn's. The one opt-in exception is the heading in
+games where the body doesn't turn with the view (see
+[Heading from the camera](#heading-from-the-camera)).
+
+### How the pawn is found
+
+First hit wins; every step can be set or turned off in the config:
+
+1. **`Pawn.ComponentType`**, when set: the object carrying that game
+   component. It never falls back to anything else.
+2. **The `Player` tag** (`Pawn.Tag`). When several objects carry it, the
+   one nearest the camera is taken, since the camera follows the local
+   player, and re-checked every 2 s.
+3. **A remembered type** (`Pawn.LearnedComponentType`) that automatic
+   discovery found earlier.
+4. **Automatic discovery** (`Pawn.AutoDiscover`, on by default): the camera
+   root is tracked at once, and the body the camera actually follows
+   replaces it once found.
+5. **The main camera's root**, a flatscreen pawn proxy, when nothing better
+   is found.
+
+Most games need no setup; the sections below cover the cases that do.
+
+### Heading from the camera
 
 Some games do not turn the body with the view: on foot in Subnautica the
 player root stays put while only the camera rig turns, so the pawn's
@@ -54,12 +84,13 @@ rotation comes from:
 | `Camera` | the camera's full rotation |
 | `Auto` | `Pawn` while the body follows the view (swimming, vehicles, first-person pawns), `CameraYaw` while the body stays put as the camera turns (on foot); decided from observed motion, with a short blend so the heading never steps |
 
-### Games the generic lookup misses
+### When the tag is not enough
 
 Some games have no `Player` tag and no `MainCamera`-tagged camera, so the
-default lookup finds nothing and the stream stays at a constant zero pose
-(the Monitor shows "pose only"). `Pawn.ComponentType` tracks the object
-carrying a named game component instead:
+tag lookup finds nothing. Automatic discovery (below) then finds the body
+from what the camera follows. To pin the pawn yourself, or when discovery
+picks the wrong object, `Pawn.ComponentType` tracks the object carrying a
+named game component:
 
 ```ini
 [Pawn] ComponentType = CarPhysics, ChassisWithWheels   ; names from the game's code
@@ -89,7 +120,8 @@ body with no game knowledge, from what the camera does. When the tag lookup
 finds nothing, the plugin tracks the camera root at once (as it does without
 this option, so a game where that was already right loses nothing) and
 observes the objects around the camera for a few seconds of gameplay; it
-then switches to the one that moves with the camera at a steady distance. Static scenery, a frozen logical player object, and
+then switches to the one that moves with the camera at a steady
+distance. Static scenery, a frozen logical player object, and
 independent movers (a ball, other cars) don't fit that pattern; a wheel or
 mesh that rides on the body scores the same as the body, so the one nearest
 the hierarchy root wins. The camera has to travel before it decides, the
@@ -174,6 +206,12 @@ physics module keep standard gravity. Disable with the
 | Unity 6 (Mono builds) | ⚠️ | one game tried (6000.3.1) does not load: its standard library is stripped, see [Known limitations](#known-limitations) |
 | 2017.2 – 2018.2 (Mono) | ⚠️ | works if the developer selected the then-experimental ".NET 4.x" scripting profile |
 | ≤ 2017.1, or any game on the legacy .NET 3.5 profile | ❌ | the vendored core (System.Memory) can't target net35 — older BepInEx catalog |
+
+**Validated in:** Subnautica Below Zero, Hyper Storm and Exo One (Mono);
+Sable, Turbo Golf Racing and Torque Drift (IL2CPP). Subnautica Below Zero
+and Turbo Golf Racing have built-in presets (`RotationSource = Auto` and a
+car component list). In Torque Drift several objects carry the `Player`
+tag, so the one nearest the camera is taken.
 
 The binding constraint on Mono is the game's **.NET runtime**, not
 Unity's API — every Unity surface this plugin touches has been
@@ -282,14 +320,24 @@ types, different socket and network calls). Neither exists yet.
    [Telemetry] MotionHz = 60           ; ObjectName = player   ; PauseDetection = true
                GravityFromPhysics = true
    [Pawn] Tag = Player                 ; CameraRootFallback = true
+          AutoDiscover = true          ; find the body from what the camera follows
+          ComponentType =              ; pin the pawn to a game component (see above)
           RotationSource = Pawn        ; Pawn | CameraYaw | Camera | Auto
    ```
 4. Pair with a receiver — e.g. ogs-ts-dotnet's
    `dotnet run --project src/TelemetryReceive`.
 
-If the tag finds nothing, the plugin falls back to the camera root and
-logs a pointer — set `Pawn.Tag` to your game's player tag (BepInEx
-console `logoutput.log`) if the default misses.
+If the tag finds nothing, automatic discovery looks for the body the
+camera follows (the camera root is tracked meanwhile) — drive or walk
+around so the camera moves, and the log shows `auto-discovered pawn '…'`.
+If a game still tracks the wrong object, set `Pawn.Survey = true` for one
+run: the log lists the cameras and the nearest objects with their
+components, and `Pawn.ComponentType` (or `Pawn.Tag`) pins the right one.
+
+If the heading never changes while you turn on foot (the body stays put and
+only the camera turns), set `Pawn.RotationSource = Auto`: the heading then
+follows the camera while the body stays put, and the pawn while it turns
+with the view (swimming, vehicles).
 
 ### Rai Pal deployments
 
