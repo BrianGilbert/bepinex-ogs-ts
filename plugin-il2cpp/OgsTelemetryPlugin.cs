@@ -117,11 +117,12 @@ public class OgsTelemetryPlugin : BasePlugin
             "Log what surrounds the camera (cameras, and the nearest objects with " +
             "their components) once per pawn binding and every 60 s while no pawn is " +
             "found. Use it to pick Pawn.ComponentType or Pawn.Tag for a new game");
-        _autoDiscover = Config.Bind("Pawn", "AutoDiscover", false,
-            "Experimental. When the tag lookup finds nothing, observe the objects around " +
-            "the camera for a few seconds of gameplay and track the one the camera follows " +
-            "(moves with it at a steady distance). No game knowledge needed; the camera " +
-            "must travel to give a result. Falls back to the camera root after 45 s");
+        _autoDiscover = Config.Bind("Pawn", "AutoDiscover", true,
+            "When the tag lookup finds nothing, observe the objects around the camera " +
+            "for a few seconds of gameplay and track the one the camera follows (moves " +
+            "with it at a steady distance). No game knowledge needed; the camera must " +
+            "travel to give a result. Until then the camera root is tracked, as without " +
+            "this option, and the discovered body replaces it");
         _learnedType = Config.Bind("Pawn", "LearnedComponentType", "",
             "Written by the plugin: the game component type AutoDiscover found on the " +
             "player's body once it proved it moves, tried first next time (instant, no " +
@@ -235,7 +236,7 @@ public class OgsBehaviour : MonoBehaviour
     Transform _discResult = null!;
     float _discStarted, _discNextSample, _discNextEval;
     int _discLastBest = -1;
-    bool _discGaveUp, _tagMissed, _pawnAuto, _pawnLearned, _pawnViaTag;
+    bool _discGaveUp, _tagMissed, _pawnAuto, _pawnLearned, _pawnViaTag, _pawnProvisional, _provisionalPick;
     int _tagCount;
     float _lastTagCheck;
     string _sessionLearned = "", _discLearnName = "", _pawnTypesKey = null!;
@@ -283,13 +284,22 @@ public class OgsBehaviour : MonoBehaviour
         var pub = _publisher;
         if (pub == null) return;
 
-        if (_pawn == null && OgsTelemetryPlugin.Instance._autoDiscover.Value && _tagMissed && !_discGaveUp && _discResult == null)
+        if ((_pawn == null || _pawnProvisional) && OgsTelemetryPlugin.Instance._autoDiscover.Value && _tagMissed && !_discGaveUp && _discResult == null)
             StepDiscovery();
         if (_pawn == null && Time.time - _lastResolveAttempt > 1f)
         {
             _lastResolveAttempt = Time.time;
             _pawn = ResolvePawn();
             if (_pawn != null) BindPawn();
+        }
+        else if (_pawn != null && _pawnProvisional && _discResult != null)
+        {
+            var found = _discResult;
+            _discResult = null!;
+            _pawn = found;
+            _pawnAuto = true;
+            OgsTelemetryPlugin.Instance.Log.LogInfo("[ogs] auto-discovered pawn '" + found.name + "' replaces the provisional camera root");
+            BindPawn();
         }
         else if (_pawn != null && _pickedTypeIndex > 0 &&
                  Time.realtimeSinceStartup - _lastUpgradeCheck > 2f)
@@ -424,7 +434,12 @@ public class OgsBehaviour : MonoBehaviour
             pub.SetObjectTypeLabel(CleanPawnName(_pawn.name));
         _lastNoPawnWarn = -100f;
         _nextSurveyAt = Time.realtimeSinceStartup + 10f;
-        _disc = null!; _discResult = null!; _discGaveUp = false; _tagMissed = false; _discLastBest = -1;
+        _pawnProvisional = _provisionalPick;
+        _provisionalPick = false;
+        if (!_pawnProvisional)       // a provisional bind leaves discovery running
+        {
+            _disc = null!; _discResult = null!; _discGaveUp = false; _tagMissed = false; _discLastBest = -1;
+        }
         try
         {
             var bc = BestCamera();
@@ -562,7 +577,15 @@ public class OgsBehaviour : MonoBehaviour
                 _pawnAuto = true;
                 return found;
             }
-            return null!;                            // still observing
+            // still observing: track the camera root meanwhile (what happens without
+            // AutoDiscover), so a game where it was already the right body loses
+            // nothing; the discovered body replaces it
+            if (p._useCameraRoot.Value)
+            {
+                var provisional = BestCamera();
+                if (provisional != null) { _provisionalPick = true; return provisional.transform.root; }
+            }
+            return null!;
         }
 
         if (p._useCameraRoot.Value)

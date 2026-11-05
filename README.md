@@ -65,7 +65,7 @@ carrying a named game component instead:
 [Pawn] ComponentType = CarPhysics, ChassisWithWheels   ; names from the game's code
        Pick = NearestCamera                            ; or First
        Survey = false                                  ; true = log what surrounds the camera
-       AutoDiscover = false                            ; true = find the body from what the camera follows
+       AutoDiscover = true                             ; find the body from what the camera follows (set false to turn off)
        LearnedComponentType =                          ; written by AutoDiscover once a pick proves it moves
 ```
 
@@ -84,16 +84,19 @@ carrying a named game component instead:
   `ComponentType`. The log also warns when the picked object has not moved
   after 10 s.
 
-**Automatic discovery (experimental).** `Pawn.AutoDiscover = true` finds the
+**Automatic discovery (on by default).** `Pawn.AutoDiscover` finds the
 body with no game knowledge, from what the camera does. When the tag lookup
-finds nothing, the plugin observes the objects around the camera for a few
-seconds of gameplay and tracks the one that moves with the camera at a
-steady distance. Static scenery, a frozen logical player object, and
+finds nothing, the plugin tracks the camera root at once (as it does without
+this option, so a game where that was already right loses nothing) and
+observes the objects around the camera for a few seconds of gameplay; it
+then switches to the one that moves with the camera at a steady distance. Static scenery, a frozen logical player object, and
 independent movers (a ball, other cars) don't fit that pattern; a wheel or
 mesh that rides on the body scores the same as the body, so the one nearest
-the hierarchy root wins. The camera has to travel before it decides, it
-falls back to the camera root after 45 s, and a pick that doesn't move while
-the camera does is rejected and the search starts again.
+the hierarchy root wins. The camera has to travel before it decides, the
+camera root stays in place if nothing is found in 45 s, and a pick that
+doesn't move while the camera does is rejected and the search starts again.
+A game with a `Player` tag, a `ComponentType` or a saved
+`LearnedComponentType` never reaches discovery.
 
 Once discovery picks a body, its most specific game component type (engine
 types are skipped; of the rest, the one with the fewest live instances) is
