@@ -318,6 +318,7 @@ types, different socket and network calls). Neither exists yet.
    ```ini
    [Transport] Group = 239.255.17.17   ; Port = 40123   ; Ttl = 1
    [Telemetry] MotionHz = 60           ; ObjectName = player   ; PauseDetection = true
+               ObjectType = Vehicle  ; (Aircraft, Watercraft, Spacecraft, Humanoid, ...)
                GravityFromPhysics = true
    [Pawn] Tag = Player                 ; CameraRootFallback = true
           AutoDiscover = true          ; find the body from what the camera follows

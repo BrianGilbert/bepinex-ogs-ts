@@ -59,6 +59,7 @@ public class OgsTelemetryPlugin : BasePlugin
     internal ConfigEntry<double> _motionHz = null!;
     internal ConfigEntry<string> _objectName = null!;
     internal ConfigEntry<string> _typeLabel = null!;
+    internal ConfigEntry<Ogs.Telemetry.Schema.ObjectType> _objectType = null!;
     internal ConfigEntry<string> _instanceLabel = null!;
     internal ConfigEntry<string> _pawnTag = null!;
     internal ConfigEntry<bool> _useCameraRoot = null!;
@@ -98,6 +99,10 @@ public class OgsTelemetryPlugin : BasePlugin
                                  "flavor). Empty = auto: the tracked pawn's " +
                                  "GameObject name with instantiation " +
                                  "suffixes stripped");
+        _objectType = Config.Bind("Telemetry", "ObjectType", Ogs.Telemetry.Schema.ObjectType.Vehicle,
+                                  "What the tracked object is (Vehicle, Aircraft, Watercraft, " +
+                                  "Spacecraft, Humanoid, Camera, Creature, Other). Receivers " +
+                                  "pick a cueing profile by it");
         _pawnTag = Config.Bind("Pawn", "Tag", "Player",
                                "GameObject tag that marks the player pawn");
         _useCameraRoot = Config.Bind("Pawn", "CameraRootFallback", true,
@@ -261,7 +266,7 @@ public class OgsBehaviour : MonoBehaviour
                                       p._ttl.Value, loopback: true);
         _publisher = new TelemetryPublisher(_sender, OgsTelemetryPlugin.GameName(),
                                             p._motionHz.Value);
-        _publisher.DeclareObject(p._objectName.Value);
+        _publisher.DeclareObject(p._objectName.Value, "", p._objectType.Value);
         _publisher.SetInstance(p._instanceLabel.Value);
         _publisher.DeclarePause();
         if (!string.IsNullOrEmpty(p._typeLabel.Value))
