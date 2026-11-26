@@ -98,6 +98,7 @@ void CorpusCheck(string name, bool ok)
 }
 if (!HeadingChecks.Run()) return 1;
 if (!DiscoveryChecks.Run()) return 1;
+if (!DynamicsChecks.Run()) return 1;
 string? corpusDir = null;
 for (var d = new DirectoryInfo(AppContext.BaseDirectory);
      d != null && corpusDir == null; d = d.Parent!)

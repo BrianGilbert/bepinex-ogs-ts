@@ -97,11 +97,10 @@ public class OgsTelemetryPlugin : BaseUnityPlugin
     float _lastGravityPoll = -1f;
     Func<System.Numerics.Vector3?>? _readGravity;
 
-    // pose → body-dynamics derivation (vendored core, same semantics as
-    // the C++ twin in ogs-ts-unreal): specific force accelerometer-style
-    // (+|g| heave at rest, g = the declared gravity), angular velocity in
-    // the C-4 component sense — see BodyDynamicsDeriver's class doc
-    BodyDynamicsDeriver _deriver = new();
+    PawnDynamics _motion = new();
+    Func<System.Numerics.Vector3?>? _readBodyVelocity;
+    bool _loggedEngineVelocity;
+    int _loggedWindows, _loggedFailures;
 
     void Awake()
     {
@@ -324,16 +323,25 @@ public class OgsTelemetryPlugin : BaseUnityPlugin
             _readGravity ??= PhysicsGravityReader();
             if (_readGravity?.Invoke() is { } g) pub.SetGravity(g);
         }
-        _deriver.GravityVector = pub.EffectiveGravity;
+        _motion.GravityVector = pub.EffectiveGravity;
         // one rotation per frame, shared by the deriver and the publisher
         // (the heading selector is stateful — it must see each frame once)
         if (_pawn is { } && !paused) _rot = ReadRotation();
         if (_pawn is { } && !paused)
         {
             if (_wasPaused)
-                _deriver.Reset(SafePos(), _rot, (double)Time.time);
+                _motion.Restart(Time.deltaTime, SafePos(), _rot);
             else
-                _deriver.Sample((double)Time.time, SafePos(), _rot);
+            {
+                _motion.Sample(Time.deltaTime, SafePos(), _rot, _readBodyVelocity?.Invoke());
+                LogVelocityCheck();
+                if (_motion.UsingEngineVelocity != _loggedEngineVelocity)
+                {
+                    _loggedEngineVelocity = _motion.UsingEngineVelocity;
+                    UnityEngine.Debug.Log("[ogs] t=" + Time.realtimeSinceStartup.ToString("F3") + " velocity source: " +
+                        (_loggedEngineVelocity ? "Rigidbody" : "position"));
+                }
+            }
         }
         // one-time sanity check: a pawn that never moves is usually the wrong
         // object (a logical player root sitting at the origin)
@@ -389,8 +397,14 @@ public class OgsTelemetryPlugin : BaseUnityPlugin
             _pawnPickPos.Z.ToString("F1") + ")");
         if (_dynamics.Value)
             pub.BindBodyDynamics(() =>
-                (_deriver.SpecificForce, _deriver.AngularVelocity));
-        _deriver = new BodyDynamicsDeriver(); // fresh state per pawn
+                (_motion.SpecificForce, _motion.AngularVelocity));
+        _motion = new PawnDynamics();
+        _loggedEngineVelocity = false;
+        _loggedWindows = _loggedFailures = 0;
+        _readBodyVelocity = BodyVelocityReader(_pawn);
+        UnityEngine.Debug.Log(_readBodyVelocity == null
+            ? "[ogs] no readable Rigidbody on '" + _pawn.name + "' or its parents; velocity comes from position"
+            : "[ogs] Rigidbody velocity found for '" + _pawn.name + "'; used while it matches the movement");
         if (string.IsNullOrEmpty(_typeLabel.Value))
             pub.SetObjectTypeLabel(CleanPawnName(_pawn.name));
         _lastNoPawnWarn = -100f;
@@ -945,6 +959,43 @@ public class OgsTelemetryPlugin : BaseUnityPlugin
     // to load) and is not among the IL2CPP flavor's compile refs. Unity's
     // frame is OGS-TS native, so the vector passes through. Null = no
     // physics module (retried at the next poll).
+    void LogVelocityCheck()
+    {
+        var check = _motion.Check;
+        if (check.Windows == _loggedWindows) return;
+        _loggedWindows = check.Windows;
+        var failures = check.FailuresInARow;
+        var at = "[ogs] t=" + Time.realtimeSinceStartup.ToString("F3");
+        if (check.SkippedAsFrozen)
+            UnityEngine.Debug.Log(at + " velocity check not counted, the pose barely moved: moved " +
+                check.PathMetres.ToString("F1") + " m, the body velocity explains " +
+                check.ClaimedMetres.ToString("F1") + " m");
+        else if (failures > 0 && failures <= VelocityCheck.FailuresBeforeDistrust)
+            UnityEngine.Debug.Log(at + " velocity check failed (" + failures + " in a row): unexplained " +
+                check.UnexplainedMetres.ToString("F1") + " m, allowed " + check.AllowedMetres.ToString("F1") +
+                " m, moved " + check.PathMetres.ToString("F1") + " m");
+        else if (failures == 0 && _loggedFailures > 0)
+            UnityEngine.Debug.Log(at + " velocity check passed again");
+        _loggedFailures = failures;
+    }
+
+    static Func<System.Numerics.Vector3?>? BodyVelocityReader(Transform pawn)
+    {
+        try
+        {
+            for (var t = pawn; t != null; t = t.parent)
+                foreach (var comp in t.GetComponents(typeof(Component)))
+                {
+                    if (comp == null) continue;
+                    for (var type = comp.GetType(); type != null; type = type.BaseType)
+                        if (type.FullName == "UnityEngine.Rigidbody")
+                            return VelocityReader.For(type, comp);
+                }
+        }
+        catch { }
+        return null;
+    }
+
     static Func<System.Numerics.Vector3?>? PhysicsGravityReader()
     {
         try

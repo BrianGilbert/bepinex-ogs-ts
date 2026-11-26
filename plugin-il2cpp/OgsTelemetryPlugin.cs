@@ -255,9 +255,10 @@ public class OgsBehaviour : MonoBehaviour
     bool _headingOnCamera;
     System.Numerics.Quaternion _rot = System.Numerics.Quaternion.Identity;
 
-    // pose → body-dynamics derivation (vendored core, same semantics as
-    // the C++ twin in ogs-ts-unreal and the Mono flavor)
-    BodyDynamicsDeriver _deriver = new();
+    PawnDynamics _motion = new();
+    Func<System.Numerics.Vector3?>? _readBodyVelocity;
+    bool _loggedEngineVelocity;
+    int _loggedWindows, _loggedFailures;
 
     void OnEnable()
     {
@@ -367,16 +368,25 @@ public class OgsBehaviour : MonoBehaviour
             _readGravity ??= PhysicsGravityReader();
             if (_readGravity?.Invoke() is { } g) pub.SetGravity(g);
         }
-        _deriver.GravityVector = pub.EffectiveGravity;
+        _motion.GravityVector = pub.EffectiveGravity;
         // one rotation per frame, shared by the deriver and the publisher
         // (the heading selector is stateful — it must see each frame once)
         if (_pawn != null && !paused) _rot = ReadRotation();
         if (_pawn != null && !paused)
         {
             if (_wasPaused)
-                _deriver.Reset(SafePos(), _rot, (double)Time.time);
+                _motion.Restart(Time.deltaTime, SafePos(), _rot);
             else
-                _deriver.Sample((double)Time.time, SafePos(), _rot);
+            {
+                _motion.Sample(Time.deltaTime, SafePos(), _rot, _readBodyVelocity?.Invoke());
+                LogVelocityCheck();
+                if (_motion.UsingEngineVelocity != _loggedEngineVelocity)
+                {
+                    _loggedEngineVelocity = _motion.UsingEngineVelocity;
+                    OgsTelemetryPlugin.Instance.Log.LogInfo("[ogs] t=" + Time.realtimeSinceStartup.ToString("F3") + " velocity source: " +
+                        (_loggedEngineVelocity ? "Rigidbody" : "position"));
+                }
+            }
         }
         // one-time sanity check: a pawn that never moves is usually the wrong
         // object (a logical player root sitting at the origin)
@@ -433,8 +443,14 @@ public class OgsBehaviour : MonoBehaviour
             _pawnPickPos.Z.ToString("F1") + ")");
         if (p._dynamics.Value)
             pub.BindBodyDynamics(() =>
-                (_deriver.SpecificForce, _deriver.AngularVelocity));
-        _deriver = new BodyDynamicsDeriver(); // fresh state per pawn
+                (_motion.SpecificForce, _motion.AngularVelocity));
+        _motion = new PawnDynamics();
+        _loggedEngineVelocity = false;
+        _loggedWindows = _loggedFailures = 0;
+        _readBodyVelocity = BodyVelocityReader(_pawn);
+        OgsTelemetryPlugin.Instance.Log.LogInfo(_readBodyVelocity == null
+            ? "[ogs] no readable Rigidbody on '" + _pawn.name + "' or its parents; velocity comes from position"
+            : "[ogs] Rigidbody velocity found for '" + _pawn.name + "'; used while it matches the movement");
         if (string.IsNullOrEmpty(p._typeLabel.Value))
             pub.SetObjectTypeLabel(CleanPawnName(_pawn.name));
         _lastNoPawnWarn = -100f;
@@ -1000,6 +1016,48 @@ public class OgsBehaviour : MonoBehaviour
     // proxy struct keeps Unity's x/y/z fields. Unity's frame is OGS-TS
     // native, so the vector passes through. Null = no physics module
     // (retried at the next poll).
+    void LogVelocityCheck()
+    {
+        var check = _motion.Check;
+        if (check.Windows == _loggedWindows) return;
+        _loggedWindows = check.Windows;
+        var failures = check.FailuresInARow;
+        var at = "[ogs] t=" + Time.realtimeSinceStartup.ToString("F3");
+        if (check.SkippedAsFrozen)
+            OgsTelemetryPlugin.Instance.Log.LogInfo(at + " velocity check not counted, the pose barely moved: moved " +
+                check.PathMetres.ToString("F1") + " m, the body velocity explains " +
+                check.ClaimedMetres.ToString("F1") + " m");
+        else if (failures > 0 && failures <= VelocityCheck.FailuresBeforeDistrust)
+            OgsTelemetryPlugin.Instance.Log.LogInfo(at + " velocity check failed (" + failures + " in a row): unexplained " +
+                check.UnexplainedMetres.ToString("F1") + " m, allowed " + check.AllowedMetres.ToString("F1") +
+                " m, moved " + check.PathMetres.ToString("F1") + " m");
+        else if (failures == 0 && _loggedFailures > 0)
+            OgsTelemetryPlugin.Instance.Log.LogInfo(at + " velocity check passed again");
+        _loggedFailures = failures;
+    }
+
+    static Func<System.Numerics.Vector3?>? BodyVelocityReader(Transform pawn)
+    {
+        try
+        {
+            var rigidbody = Type.GetType("UnityEngine.Rigidbody, UnityEngine.PhysicsModule", false);
+            if (rigidbody == null)
+                foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+                    if ((rigidbody = asm.GetType("UnityEngine.Rigidbody", false)) != null) break;
+            if (rigidbody == null) return null;
+            for (var t = pawn; t != null; t = t.parent)
+                foreach (var comp in t.GetComponents(Il2CppInterop.Runtime.Il2CppType.Of<Component>()))
+                {
+                    if (comp == null) continue;
+                    for (var type = comp.GetIl2CppType(); type != null; type = type.BaseType)
+                        if (type.FullName == "UnityEngine.Rigidbody")
+                            return VelocityReader.For(rigidbody, Activator.CreateInstance(rigidbody, comp.Pointer)!);
+                }
+        }
+        catch { }
+        return null;
+    }
+
     static Func<System.Numerics.Vector3?>? PhysicsGravityReader()
     {
         try

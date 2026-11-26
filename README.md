@@ -176,11 +176,17 @@ frame: **specific force** (m/s², accelerometer-style: `f = a − g`,
 +1 g on the up axis at rest — what an IMU reads) and **angular
 velocity** (rad/s, C-4 body-frame sense: +x nose-up, +y nose-right,
 +z right-side-down), derived each frame from the pawn's pose by the
-vendored `BodyDynamicsDeriver` (position-delta velocity, τ = 0.1 s
-acceleration low-pass, teleport reset, quaternion-delta rates with no
-Euler representation-flip artifacts — see GameConn `docs/cueing.md`
-for the receiver-side value). Disable with the `Dynamics` config entry
-(default on; takes effect when the pawn is (re)resolved).
+vendored `BodyDynamicsDeriver`, timed by the game's frame time. Velocity
+comes from the `Rigidbody` on the pawn or its nearest parent. While there
+is none, or it disagrees with how the pawn moves, velocity comes from
+position deltas, which are noisy for an object that only moves on physics
+steps. A body that disagrees is dropped only after three half-second checks
+in a row fail. A check where the pawn barely moved isn't counted, for up to
+six in a row. The BepInEx log records each failure and the source in use. Acceleration has a
+0.1 s low-pass, a sudden position jump resets the estimate, and rates come from
+quaternion deltas, which avoids Euler representation flips (see GameConn
+`docs/cueing.md`). Disable with the `Dynamics` config entry (default on;
+takes effect when the pawn is (re)resolved).
 
 Pauses are reported on the ratified `session.paused` channel (standard
 CONVENTIONS C-11): while the game's `Time.timeScale` is 0 the plugin
