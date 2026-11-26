@@ -73,10 +73,9 @@ Console.WriteLine("PASS typeLabel swap after discovery starts generation 1");
     Console.WriteLine(Math.Abs(sf.Y - g) < 0.2
         ? "PASS dynamics: heave ≈ +1 g (accelerometer-style)"
         : "FAIL dynamics: heave");
-    // centripetal on +sway; surge leakage bounded by the accel LP phase
-    // lag atan(ωτ) on the co-rotating vector (documented filter property)
+    const float MaxFilterLagSurgeShare = 0.30f;
     bool sway = Math.Abs(sf.X - (float)(w * w * r)) < 1.5f &&
-                Math.Abs(sf.Z) < (float)(w * w * r) * 0.25f;
+                Math.Abs(sf.Z) < (float)(w * w * r) * MaxFilterLagSurgeShare;
     ok &= sway;
     Console.WriteLine(sway
         ? "PASS dynamics: centripetal ω²r on +sway (C-4 right-turn)"

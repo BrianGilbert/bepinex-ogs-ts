@@ -179,8 +179,9 @@ velocity** (rad/s, C-4 body-frame sense: +x nose-up, +y nose-right,
 vendored `BodyDynamicsDeriver`, timed by the game's frame time. Velocity
 comes from the `Rigidbody` on the pawn or its nearest parent. While there
 is none, or it disagrees with how the pawn moves, velocity comes from
-position deltas, which are noisy for an object that only moves on physics
-steps. A body that disagrees is dropped only after three
+positions: a velocity each time the position changes, then the median of the
+last five, which steadies an object that only moves on physics steps but
+reacts a little later than a body velocity. A body that disagrees is dropped only after three
 half-second checks in a row fail. A check where the pawn didn't move at all
 isn't counted, and one where it barely moved isn't counted for up to six in a
 row. The BepInEx log records each failure and the source in use. Acceleration

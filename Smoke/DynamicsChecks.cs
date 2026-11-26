@@ -54,8 +54,8 @@ static class DynamicsChecks
     public static bool Run()
     {
         var fromPosition = Drive(null, 68);
-        Check("uneven stepping from position alone spikes (the field symptom)",
-              fromPosition.peak > 100, $"peak {fromPosition.peak:F1}");
+        Check("uneven stepping from position alone stays quiet too",
+              fromPosition.peak < 100, $"peak {fromPosition.peak:F1}");
 
         var fromBody = Drive(_ => new Vector3(0, 0, 68), 68);
         Check("uneven stepping with body velocity stays quiet",
