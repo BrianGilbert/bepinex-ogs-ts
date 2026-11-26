@@ -63,7 +63,7 @@ First hit wins; every step can be set or turned off in the config:
 3. **A remembered type** (`Pawn.LearnedComponentType`) that automatic
    discovery found earlier.
 4. **Automatic discovery** (`Pawn.AutoDiscover`, on by default): the camera
-   root is tracked at once, and the body the camera actually follows
+   root is tracked at once, and the body the camera follows
    replaces it once found.
 5. **The main camera's root**, a flatscreen pawn proxy, when nothing better
    is found.
@@ -153,7 +153,7 @@ file to re-seed.
 
 `Auto` is tuned in the `[Heading]` section of the same per-game config file
 (defaults suit on-foot Subnautica; all take effect when the pawn is
-re-resolved, i.e. on the next game load):
+re-resolved, that is, on the next game load):
 
 | Key | Default | Meaning |
 |---|---|---|
@@ -222,7 +222,7 @@ and Turbo Golf Racing have built-in presets (`RotationSource = Auto` and a
 car component list). In Torque Drift several objects carry the `Player`
 tag, so the one nearest the camera is taken.
 
-The binding constraint on Mono is the game's **.NET runtime**, not
+On Mono, the limit is the game's **runtime** and its .NET version, not
 Unity's API — every Unity surface this plugin touches has been
 ABI-stable since the Unity 5 era. **Quick check** for a specific game,
 look in `<game>/<Game>_Data/`:
@@ -250,7 +250,7 @@ If the game is Mono and 2018.3+ and the plugin still doesn't load, check the Bep
 
 **Unity 6 Mono builds with a stripped class library.** Unity 6 strips
 unused code out of the Mono class library (`mscorlib.dll`, `System.dll`,
-`System.Core.dll`, ...) at build time. Observed on Vecter (Unity 6000.3.1,
+`System.Core.dll` and others) at build time. Observed on Vecter (Unity 6000.3.1,
 Mono): the game's `mscorlib.dll` is about 2.6 MB with 2,035 types, against
 about 4.5 MB and 2,993 types unstripped. Two layers fail:
 
@@ -299,8 +299,20 @@ types, different socket and network calls). Neither exists yet.
 
 ## Install
 
-1. Install BepInEx (x64) into the game — **which flavor depends on the
-   game's scripting backend**:
+### With Rai Pal
+
+In [Rai Pal](https://github.com/Raicuparta/rai-pal), select the game and
+install **OGS Telemetry (BepInEx)**. There are builds for both Mono and
+IL2CPP games, and they use Rai Pal's BepInEx, so there's nothing to
+download or copy. Then run the game through Rai Pal. The settings and
+receiver steps below still apply. Rai Pal keeps its BepInEx outside the game
+folder, so look for the config and logs there. The plugin takes the game name
+from the process, so expect `game=<exe name>` on the wire.
+
+### Without Rai Pal
+
+1. Install BepInEx (x64) into the game — **which flavor depends on how
+   the game runs its scripts**:
 
    - **Mono game** (no `GameAssembly.dll`): [BepInEx 5](https://github.com/BepInEx/BepInEx/releases)
      (5.4.22+). Mono games with a .NET 4.7.2+ runtime only.
@@ -310,10 +322,10 @@ types, different socket and network calls). Neither exists yet.
    **Where:** extract the BepInEx zip into the game's installation root —
    the folder containing the game's `.exe` (Steam: right-click the game →
    Manage → **Browse local files**). This creates the `BepInEx\` folder
-   next to the exe; run the game once to finish setup (BepInEx 6 spends
+   next to the `.exe`; run the game once to finish setup (BepInEx 6 spends
    the first launch generating interop assemblies — expect a longer
    black screen and check `LogOutput.log` before assuming failure).
-2. From the release zip, extract the **matching subfolder's contents** —
+2. From the release zip, extract the contents of the **matching subfolder** —
    `mono/` for BepInEx 5, `il2cpp/` for BepInEx 6 — into that game's
    `<game root>\BepInEx\plugins\` — **every DLL in it** (IL2CPP:
    `ogs_telemetry.dll` alone; Mono: it plus four .NET Framework
@@ -334,7 +346,7 @@ types, different socket and network calls). Neither exists yet.
           ComponentType =              ; pin the pawn to a game component (see above)
           RotationSource = Pawn        ; Pawn | CameraYaw | Camera | Auto
    ```
-4. Pair with a receiver — e.g. ogs-ts-dotnet's
+4. Pair with a receiver, for example ogs-ts-dotnet's
    `dotnet run --project src/TelemetryReceive`.
 
 If the tag finds nothing, automatic discovery looks for the body the
@@ -348,15 +360,6 @@ If the heading never changes while you turn on foot (the body stays put and
 only the camera turns), set `Pawn.RotationSource = Auto`: the heading then
 follows the camera while the body stays put, and the pawn while it turns
 with the view (swimming, vehicles).
-
-### Rai Pal deployments
-
-Rai Pal ships its own BepInEx copy and installs it under
-`%APPDATA%\raicuparta\rai-pal\data\installed-mods\<hash>\bepinex\`
-(hash-named per game) — **not** the game root. Plugins go into that
-folder's `BepInEx\plugins\`, and logs land there too. The plugin
-derives the game name from the process (Rai Pal's hash folder name is
-meaningless), so expect `game=<exe name>` on the wire.
 
 ## Standalone test (no game)
 
@@ -379,7 +382,7 @@ build time:
 - **IL2CPP** (`plugin-il2cpp/`, net6.0): references the official
   BepInEx NuGet feed — `BepInEx.Unity.IL2CPP` (be.788, the current
   IL2CPP distribution) plus its interop-mapped UnityEngine reference
-  libs, both compile-only. The plugin runs on BepInEx's .NET 6
+  libraries, both compile-only. The plugin runs on BepInEx's .NET 6
   CoreCLR sidecar, not inside IL2CPP — only game-object access crosses
   the interop boundary.
 
