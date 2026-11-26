@@ -33,6 +33,7 @@ namespace Ogs.BepInEx
         public void Sample(float deltaTime, Vector3 position, Quaternion orientation, Vector3? velocity)
         {
             _clock += deltaTime;
+            if (!velocity.HasValue) _check.Interrupt();
             bool useEngine = velocity.HasValue && _check.Update(deltaTime, position, velocity.Value);
             if (useEngine != UsingEngineVelocity)
             {
@@ -49,6 +50,7 @@ namespace Ogs.BepInEx
         public const int FailuresBeforeDistrust = 3;
         public const int MaxFrozenWindowsInARow = 6;
         const float FrozenShareOfClaimed = 0.1f;
+        const float StillPathMetres = 0.001f;
         const double WindowSeconds = 0.5;
         const float AllowedErrorOfPath = 0.5f;
         const float AllowedErrorMetres = 0.5f;
@@ -67,6 +69,9 @@ namespace Ogs.BepInEx
         public float PathMetres { get; private set; }
         public float ClaimedMetres { get; private set; }
         public bool SkippedAsFrozen { get; private set; }
+        public bool FailedLastWindow { get; private set; }
+
+        public void Interrupt() => _hasPrevious = false;
 
         public void Restart()
         {
@@ -100,13 +105,19 @@ namespace Ogs.BepInEx
                 ClaimedMetres = _claimedMetres;
                 Windows++;
                 bool failed = UnexplainedMetres > AllowedMetres;
-                bool frozen = failed && PathMetres < FrozenShareOfClaimed * ClaimedMetres;
-                _frozenInARow = frozen ? _frozenInARow + 1 : 0;
-                SkippedAsFrozen = frozen && _frozenInARow <= MaxFrozenWindowsInARow;
+                bool still = PathMetres < StillPathMetres;
+                bool barely = failed && !still && PathMetres < FrozenShareOfClaimed * ClaimedMetres;
+                if (!still) _frozenInARow = barely ? _frozenInARow + 1 : 0;
+                SkippedAsFrozen = failed && (still || (barely && _frozenInARow <= MaxFrozenWindowsInARow));
+                FailedLastWindow = failed;
+                bool movedEnoughToJudge = PathMetres > 2 * AllowedErrorMetres;
                 if (!failed)
                 {
-                    FailuresInARow = 0;
-                    Trusted = true;
+                    if (movedEnoughToJudge)
+                    {
+                        FailuresInARow = 0;
+                        Trusted = true;
+                    }
                 }
                 else if (!SkippedAsFrozen && ++FailuresInARow >= FailuresBeforeDistrust)
                     Trusted = false;

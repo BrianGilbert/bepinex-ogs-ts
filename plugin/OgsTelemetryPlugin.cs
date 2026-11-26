@@ -970,7 +970,7 @@ public class OgsTelemetryPlugin : BaseUnityPlugin
             UnityEngine.Debug.Log(at + " velocity check not counted, the pose barely moved: moved " +
                 check.PathMetres.ToString("F1") + " m, the body velocity explains " +
                 check.ClaimedMetres.ToString("F1") + " m");
-        else if (failures > 0 && failures <= VelocityCheck.FailuresBeforeDistrust)
+        else if (check.FailedLastWindow && failures <= VelocityCheck.FailuresBeforeDistrust)
             UnityEngine.Debug.Log(at + " velocity check failed (" + failures + " in a row): unexplained " +
                 check.UnexplainedMetres.ToString("F1") + " m, allowed " + check.AllowedMetres.ToString("F1") +
                 " m, moved " + check.PathMetres.ToString("F1") + " m");

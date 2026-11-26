@@ -107,12 +107,60 @@ static class DynamicsChecks
         }
         Check("a briefly frozen pose keeps body velocity", kept);
         Check("a briefly frozen pose causes no surge spike", frozenPeak < 0.5f, $"peak {frozenPeak:F2}");
-        var stuck = Drive(_ => new Vector3(0, 0, 68), 68, stepped: false, travelTime: t => Math.Min(t, 3));
-        Check("a pose that stays frozen is eventually not believed",
-              stuck.firstFallback > 6 && stuck.firstFallback <= 8.5, $"at {stuck.firstFallback:F2} s");
+        var still = Drive(_ => new Vector3(0, 0, 68), 68, stepped: false,
+            travelTime: t => t < 3 ? t : t < 8.5 ? 3 : t - 5.5);
+        Check("a completely still pose never switches, however long", still.fallbacks == 0);
+        Check("a long still pose causes no surge spike", still.peak < 0.5f, $"peak {still.peak:F2}");
+        var creeping = Drive(_ => new Vector3(0, 0, 68), 68, stepped: false,
+            travelTime: t => t < 3 ? t : 3 + 0.03 * (t - 3));
+        Check("a pose that only creeps is eventually not believed",
+              creeping.firstFallback > 6 && creeping.firstFallback <= 8.5, $"at {creeping.firstFallback:F2} s");
         var huge = Drive(_ => new Vector3(0, 0, 6800), 68, stepped: false);
         Check("a velocity 100 times too big is still rejected",
               huge.firstFallback > 0 && huge.firstFallback <= 5.7, $"at {huge.firstFallback:F2} s");
+
+        {
+            var dynamics = new PawnDynamics();
+            float x = 0;
+            bool fellBack = false, trustedAgain = false;
+            for (int i = 0; i < 1500; i++)
+            {
+                if (i % 360 < 240) x += 10f / 60f;
+                dynamics.Sample(1f / 60f, new Vector3(0, 0, x), Quaternion.Identity, Vector3.Zero);
+                if (!dynamics.UsingEngineVelocity) fellBack |= i > 0;
+                else if (fellBack) trustedAgain = true;
+            }
+            Check("body velocity stuck at zero: standing still does not restore trust",
+                  fellBack && !trustedAgain);
+        }
+        {
+            var dynamics = new PawnDynamics();
+            float x = 0;
+            bool fellBack = false;
+            for (int i = 0; i < 600; i++)
+            {
+                float speed = i < 200 ? 10 : 3;
+                x += speed / 60f;
+                dynamics.Sample(1f / 60f, new Vector3(0, 0, x), Quaternion.Identity,
+                    new Vector3(0, 0, i < 200 ? 0 : speed));
+                fellBack |= i > 0 && !dynamics.UsingEngineVelocity;
+            }
+            Check("a body velocity that comes right while walking is trusted again",
+                  fellBack && dynamics.UsingEngineVelocity);
+        }
+        {
+            var dynamics = new PawnDynamics();
+            float x = 0, peak = 0;
+            for (int i = 0; i < 360; i++)
+            {
+                float step = i % 30 == 20 ? 2f / 60f : 1f / 60f;
+                x += (i % 30 == 10 ? 2 : 1) * 68f / 60f;
+                dynamics.Sample(step, new Vector3(0, 0, x), Quaternion.Identity,
+                    i % 90 == 40 ? (Vector3?)null : new Vector3(0, 0, 68));
+                if (i > 90) peak = Math.Max(peak, Math.Abs(dynamics.SpecificForce.Z));
+            }
+            Check("a single unreadable body velocity causes no surge spike", peak < 0.5f, $"peak {peak:F2}");
+        }
 
         var old = new OldBody();
         Check("reads Rigidbody.velocity",
