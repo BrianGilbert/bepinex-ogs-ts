@@ -1,6 +1,8 @@
 # 1. Body dynamics use the physics body velocity and frame time
 
-Date: 2026-11-26. Status: accepted, not yet confirmed in a game.
+Date: 2026-11-26. Status: accepted. In a Torque Drift car the `Rigidbody`
+velocity was used with no failed check. In Subnautica Below Zero on foot it
+failed the check and positions took over.
 
 ## Context
 
