@@ -68,6 +68,10 @@ First hit wins; every step can be set or turned off in the config:
 5. **The main camera's root**, a flatscreen pawn proxy, when nothing better
    is found.
 
+Unless `Pawn.ComponentType` is set, an object found by a later step doesn't
+stop the tag lookup: the plugin looks again every 2 s and switches to a
+tagged object as soon as one exists.
+
 Most games need no setup; the sections below cover the cases that do.
 
 ### Heading from the camera

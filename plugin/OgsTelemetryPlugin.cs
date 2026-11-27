@@ -64,7 +64,8 @@ public class OgsTelemetryPlugin : BaseUnityPlugin
     int _discLastBest = -1;
     bool _discGaveUp, _tagMissed, _pawnAuto, _pawnLearned, _pawnViaTag, _pawnProvisional, _provisionalPick;
     int _tagCount;
-    float _lastTagCheck;
+    float _lastTagCheck, _lastTagReport;
+    bool _tagErrorLogged;
     string _sessionLearned = "", _discLearnName = "", _pawnTypesKey = null!;
     System.Numerics.Vector3 _pickCamPos;
 
@@ -280,6 +281,39 @@ public class OgsTelemetryPlugin : BaseUnityPlugin
                 }
             }
             catch { /* transient scene teardown: try again next time */ }
+        }
+        else if (_pawn != null && !_pawnViaTag && (_pawnComponentTypeName.Value ?? "").Trim().Length == 0 &&
+                 Time.realtimeSinceStartup - _lastTagCheck > 2f)
+        {
+            _lastTagCheck = Time.realtimeSinceStartup;
+            try
+            {
+                var tagged = PickTagged(_pawnTag.Value, true);
+                if (tagged != null)
+                {
+                    Logger.LogInfo("[ogs] tagged object '" + tagged.name + "' replaces '" + _pawn.name + "'");
+                    _pawn = tagged;
+                    _pawnViaTag = true;
+                    _pawnAuto = false;
+                    _pawnLearned = false;
+                    _provisionalPick = false;
+                    _discResult = null!;
+                    BindPawn();
+                }
+                else if (Time.realtimeSinceStartup - _lastTagReport > 30f)
+                {
+                    _lastTagReport = Time.realtimeSinceStartup;
+                    Logger.LogInfo("[ogs] no '" + _pawnTag.Value + "'-tagged object yet; tracking '" + _pawn.name + "'");
+                }
+            }
+            catch (System.Exception e)
+            {
+                if (!_tagErrorLogged)
+                {
+                    _tagErrorLogged = true;
+                    Logger.LogWarning("[ogs] tag lookup failed: " + e.Message);
+                }
+            }
         }
         else if (_pawn != null && _pawnViaTag && Time.realtimeSinceStartup - _lastTagCheck > 2f)
         {

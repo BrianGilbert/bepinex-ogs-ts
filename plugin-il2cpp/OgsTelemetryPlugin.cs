@@ -243,7 +243,8 @@ public class OgsBehaviour : MonoBehaviour
     int _discLastBest = -1;
     bool _discGaveUp, _tagMissed, _pawnAuto, _pawnLearned, _pawnViaTag, _pawnProvisional, _provisionalPick;
     int _tagCount;
-    float _lastTagCheck;
+    float _lastTagCheck, _lastTagReport;
+    bool _tagErrorLogged;
     string _sessionLearned = "", _discLearnName = "", _pawnTypesKey = null!;
     System.Numerics.Vector3 _pickCamPos;
     bool _wasPaused;
@@ -325,6 +326,39 @@ public class OgsBehaviour : MonoBehaviour
                 }
             }
             catch { /* transient scene teardown: try again next time */ }
+        }
+        else if (_pawn != null && !_pawnViaTag && (OgsTelemetryPlugin.Instance._pawnComponentTypeName.Value ?? "").Trim().Length == 0 &&
+                 Time.realtimeSinceStartup - _lastTagCheck > 2f)
+        {
+            _lastTagCheck = Time.realtimeSinceStartup;
+            try
+            {
+                var tagged = PickTagged(OgsTelemetryPlugin.Instance._pawnTag.Value, true);
+                if (tagged != null)
+                {
+                    OgsTelemetryPlugin.Instance.Log.LogInfo("[ogs] tagged object '" + tagged.name + "' replaces '" + _pawn.name + "'");
+                    _pawn = tagged;
+                    _pawnViaTag = true;
+                    _pawnAuto = false;
+                    _pawnLearned = false;
+                    _provisionalPick = false;
+                    _discResult = null!;
+                    BindPawn();
+                }
+                else if (Time.realtimeSinceStartup - _lastTagReport > 30f)
+                {
+                    _lastTagReport = Time.realtimeSinceStartup;
+                    OgsTelemetryPlugin.Instance.Log.LogInfo("[ogs] no '" + OgsTelemetryPlugin.Instance._pawnTag.Value + "'-tagged object yet; tracking '" + _pawn.name + "'");
+                }
+            }
+            catch (System.Exception e)
+            {
+                if (!_tagErrorLogged)
+                {
+                    _tagErrorLogged = true;
+                    OgsTelemetryPlugin.Instance.Log.LogWarning("[ogs] tag lookup failed: " + e.Message);
+                }
+            }
         }
         else if (_pawn != null && _pawnViaTag && Time.realtimeSinceStartup - _lastTagCheck > 2f)
         {
