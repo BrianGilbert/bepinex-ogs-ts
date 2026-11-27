@@ -244,6 +244,8 @@ public class OgsBehaviour : MonoBehaviour
     bool _discGaveUp, _tagMissed, _pawnAuto, _pawnLearned, _pawnViaTag, _pawnProvisional, _provisionalPick;
     int _tagCount;
     float _lastTagCheck, _lastTagReport;
+    const float DiscoveryRetrySeconds = 1f;
+    float _discRetryAt;
     bool _tagErrorLogged;
     string _sessionLearned = "", _discLearnName = "", _pawnTypesKey = null!;
     System.Numerics.Vector3 _pickCamPos;
@@ -812,17 +814,24 @@ public class OgsBehaviour : MonoBehaviour
 
     bool StartDiscovery(float now)
     {
+        if (now < _discRetryAt) return false;
         var cam = BestCamera();
         if (cam == null) return false;
         var camRoot = cam.transform.root;
+        int uiSkipped = 0;
         var list = new System.Collections.Generic.List<System.Collections.Generic.KeyValuePair<float, Transform>>();
         foreach (var o in UnityEngine.Object.FindObjectsOfType(Il2CppInterop.Runtime.Il2CppType.Of<Transform>()))
         {
             var t = o?.TryCast<Transform>();
             if (t == null || t.root == camRoot || _discRejected.Contains(t.GetInstanceID())) continue;
+            if (t.TryCast<RectTransform>() != null) { uiSkipped++; continue; }
             { var sd = SqrDistance(t, cam.transform); if (!float.IsNaN(sd)) list.Add(new System.Collections.Generic.KeyValuePair<float, Transform>(sd, t)); }
         }
-        if (list.Count == 0) return false;
+        if (list.Count == 0)
+        {
+            _discRetryAt = now + DiscoveryRetrySeconds;
+            return false;
+        }
         list.Sort((a, b) => a.Key.CompareTo(b.Key));
 
         // the 200 nearest, plus the ancestors of the 60 nearest (the body is
@@ -837,6 +846,7 @@ public class OgsBehaviour : MonoBehaviour
             for (int hops = 0; anc != null && hops < 32 && _discCands.Count < 400; hops++, anc = anc.parent)
             {
                 if (anc.root == camRoot) break;
+                if (anc.TryCast<RectTransform>() != null) continue;
                 if (_discRejected.Contains(anc.GetInstanceID())) continue;
                 if (seen.Add(anc.GetInstanceID())) _discCands.Add(anc);
             }
@@ -866,7 +876,8 @@ public class OgsBehaviour : MonoBehaviour
         _discNextEval = now + 1f;
         _discLastBest = -1;
         OgsTelemetryPlugin.Instance.Log.LogInfo("[ogs] auto-discovery: observing " + _discCands.Count +
-               " objects around camera '" + cam.name + "'; the camera must move to give a result");
+               " objects around camera '" + cam.name + "' (" + uiSkipped +
+               " UI objects skipped); the camera must move to give a result");
         return true;
     }
 

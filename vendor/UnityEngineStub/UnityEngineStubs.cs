@@ -49,6 +49,8 @@ namespace UnityEngine
         public Transform parent { get { return null; } }
     }
 
+    public sealed class RectTransform : Transform { }
+
     public class GameObject : Object
     {
         public static GameObject FindWithTag(string tag) { return new GameObject(); }

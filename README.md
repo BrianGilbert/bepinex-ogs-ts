@@ -128,7 +128,8 @@ then switches to the one that moves with the camera at a steady
 distance. Static scenery, a frozen logical player object, and
 independent movers (a ball, other cars) don't fit that pattern; a wheel or
 mesh that rides on the body scores the same as the body, so the one nearest
-the hierarchy root wins. The camera has to travel before it decides, the
+the hierarchy root wins. UI objects (those with a `RectTransform`) are
+never candidates. The camera has to travel before it decides, the
 camera root stays in place if nothing is found in 45 s, and a pick that
 doesn't move while the camera does is rejected and the search starts again.
 A game with a `Player` tag, a `ComponentType` or a saved
